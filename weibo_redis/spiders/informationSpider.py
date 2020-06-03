@@ -29,39 +29,45 @@ class Spider(RedisSpider):
     def start_requests(self):
         for url in self.start_urls:
             yield Request(url=u"https://weibo.cn/u/%s" % url, meta={"ID": url}, callback=self.parse)
-            # yield Request(url=u"https://weibo.cn/u/%s?page=1" % url, meta={"ID": url}, callback=self.tweets_parse)
+            yield Request(url=u"https://weibo.cn/u/%s?page=1" % url, meta={"ID": url}, callback=self.tweets_parse)
 
     def parse(self, response):
 
         information_items = InformationItem()
         selector = Selector(response)
-        text = selector.xpath('body/div[@class="u"]/div[@class="tip2"]').get()
 
-        if text:
-            num_tweets = re.findall(u'\u5fae\u535a\[(\d+)\]', text)
-            num_follows = re.findall(u'\u5173\u6ce8\[(\d+)\]', text)  # 关注数
-            num_fans = re.findall(u'\u7c89\u4e1d\[(\d+)\]', text)  # 粉丝数
+        try:
+            text = selector.xpath('body/div[@class="u"]/div[@class="tip2"]').get()
 
-            if num_tweets:
-                information_items["Num_Tweets"] = int(num_tweets[0])
+            if text:
+                num_tweets = re.findall(u'\u5fae\u535a\[(\d+)\]', text)
+                num_follows = re.findall(u'\u5173\u6ce8\[(\d+)\]', text)  # 关注数
+                num_fans = re.findall(u'\u7c89\u4e1d\[(\d+)\]', text)  # 粉丝数
 
-            if num_follows:
-                information_items["Num_Follows"] = int(num_follows[0])
+                if num_tweets:
+                    information_items["Num_Tweets"] = int(num_tweets[0])
 
-            if num_fans:
-                information_items["Num_Fans"] = int(num_fans[0])
+                if num_follows:
+                    information_items["Num_Follows"] = int(num_follows[0])
 
-            information_items["_id"] = response.meta["ID"]
-            url_detail_info = "https://weibo.cn/%s/info" % response.meta["ID"]
+                if num_fans:
+                    information_items["Num_Fans"] = int(num_fans[0])
 
-# change cookie2's type to dict
-            Cookie2 = str(response.request.headers.getlist('Cookie'))
-            cookie = {}
+                information_items["_id"] = response.meta["ID"]
+                url_detail_info = "https://weibo.cn/%s/info" % response.meta["ID"]
+        except:
+            print("parse except")
+            pass
 
-            for line in Cookie2.split(';'):
-                key, value = line.split('=', 1)
-                cookie[key] = value
+        # get cookies from scrapy response
+        Cookie2 = str(response.request.headers.getlist('Cookie'))
+        cookie = {}
+        # change string type to dict
+        for line in Cookie2.split(';'):
+            key, value = line.split('=', 1)
+            cookie[key] = value
 
+        try:
             r = requests.get(url_detail_info, cookies=cookie)  # cookie's type need dict
 
             if r.status_code == 200:
@@ -92,13 +98,16 @@ class Spider(RedisSpider):
                         age = today - birthday.year
                         information_items["Birthday"] = birthday - datetime.timedelta(hours=8)
                         information_items["Age"] = age
-                    except Exception:
+                    except:
                         pass
+
                 if url:
                     information_items["URL"] = url[0]
 
                 yield information_items
-
+        except:
+            print("detail except")
+            pass
 
     def tweets_parse(self, response):
         selector = Selector(response)
@@ -107,63 +116,72 @@ class Spider(RedisSpider):
         tweets = selector.xpath('body/div[@class="c" and @id]')
 
         for tweet in tweets:
-            id_comp = tweet.xpath('@id').get()
-            id = re.sub('M_', '', id_comp)  # 获取评论ID
-            yield scrapy.http.Request(url=u"https://weibo.cn/attitude/%s?&page=1" % id, meta={"Com_ID": id},
-                                      callback=self.attitude_parse)  # 爬取点赞列表
+            try:
+                id_comp = tweet.xpath('@id').get()
+                id = re.sub('M_', '', id_comp)  # 获取评论ID
+                yield Request(url=u"https://weibo.cn/attitude/%s?&page=1" % id, meta={"Com_ID": id},
+                              callback=self.attitude_parse)  # 爬取点赞列表
 
-            # content = tweet.xpath('div/span[@class="ctt"]/text()').getall()
-            # content2 = tweet.xpath('div/span[@class="cmt"]/text()').getall()
-            links = tweet.xpath('div/a/@href').getall()
-            for link in links:
-                if 'comment' in link:
-                    tmp_link = link
-                    comment_link = re.sub('#cmtfrm', '&page=1', tmp_link)
-                    self.comment_url.append(comment_link)
+                # content = tweet.xpath('div/span[@class="ctt"]/text()').getall()
+                # content2 = tweet.xpath('div/span[@class="cmt"]/text()').getall()
+                links = tweet.xpath('div/a/@href').getall()
+                for link in links:
+                    if 'comment' in link:
+                        tmp_link = link
+                        comment_link = re.sub('#cmtfrm', '&page=1', tmp_link)
+                        self.comment_url.append(comment_link)
 
-            for url in self.comment_url:
-                yield Request(url=url, meta={"item": tweet_item}, callback=self.comments_parse)  # 爬取评论页
+                for url in self.comment_url:
+                    yield Request(url=url, meta={"item": tweet_item}, callback=self.comments_parse)  # 爬取评论页
 
-            url_next = selector.xpath(
-                u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
-            ).get()
-            if url_next:
-                yield scrapy.http.Request(url=self.host + url_next, callback=self.tweets_parse)
+                url_next = selector.xpath(
+                    u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
+                ).get()
+                if url_next:
+                    yield Request(url=self.host + url_next, callback=self.tweets_parse)
+            except:
+                print("tweet except")
+                pass
 
     def comments_parse(self, response):
         selector = Selector(response)
 
         comments_ids = selector.xpath('//div[@class="c" and @id]/a/@href').getall()
+        try:
 
-        for comment_id in comments_ids:
-            elem = re.findall('/u/(\d+)', comment_id)
-            if elem:
-                ID = int(elem[0])
-                yield scrapy.http.Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
+            for comment_id in comments_ids:
+                elem = re.findall('/u/(\d+)', comment_id)
+                if elem:
+                    ID = int(elem[0])
+                    yield Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
 
-        url_next = selector.xpath(
-            u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
-        ).get()
+            url_next = selector.xpath(
+                u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
+            ).get()
 
-        if url_next:
-            yield scrapy.http.Request(url=self.host + url_next, callback=self.comments_parse)
-        else:
-            print("comment finished")
+            if url_next:
+                yield Request(url=self.host + url_next, callback=self.comments_parse)
+            else:
+                print("comment finished")
+
+        except:
+            print("comments_parse except")
+            pass
 
     def attitude_parse(self, response):
         selector = Selector(response)
 
-        comments_ids = selector.xpath('//div[@class="c" and @id]/a/@href').getall()
+        comments_ids = selector.xpath('//div[@class="c"]/a/@href').getall()
 
         for comment_id in comments_ids:
             elem = re.findall('/u/(\d+)', comment_id)
             if elem:
                 ID = int(elem[0])
-                yield scrapy.http.Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
+                yield Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
 
         url_next = selector.xpath(
             u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
         ).get()
 
         if url_next:
-            yield scrapy.http.Request(url=self.host + url_next, callback=self.attitude_parse)
+            yield Request(url=self.host + url_next, callback=self.attitude_parse)
