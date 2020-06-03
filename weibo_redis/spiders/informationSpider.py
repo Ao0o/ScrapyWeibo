@@ -12,6 +12,8 @@ from scrapy.http import Request
 # from scrapy.http.cookies import CookieJar
 from lxml import etree
 
+header = {'User-Agent':"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/534.27 (KHTML, like Gecko) Chrome/12.0.712.0 Safari/534.27"}
+
 
 class Spider(RedisSpider):
     name = "informationSpider"
@@ -30,7 +32,7 @@ class Spider(RedisSpider):
     def start_requests(self):
         for url in self.start_urls:
             yield Request(url=u"https://weibo.cn/u/%s" % url, meta={"ID": url}, callback=self.parse)
-            yield Request(url=u"https://weibo.cn/u/%s?page=1" % url, meta={"ID": url}, callback=self.tweets_parse)
+            yield Request(url=u"https://weibo.cn/u/%s?page=30" % url, meta={"ID": url}, callback=self.tweets_parse)
 
     def parse(self, response):
 
@@ -69,7 +71,7 @@ class Spider(RedisSpider):
             cookie[key] = value
 
         try:
-            r = requests.get(url_detail_info, cookies=cookie)  # cookie's type need dict
+            r = requests.get(url_detail_info, cookies=cookie,headers = header)  # cookie's type need dict
 
             if r.status_code == 200:
                 selector = etree.HTML(r.content)
@@ -114,9 +116,9 @@ class Spider(RedisSpider):
         tweet_item = TweetsItem()
 
         tweets = selector.xpath('body/div[@class="c" and @id]')
+        try:
+            for tweet in tweets:
 
-        for tweet in tweets:
-            try:
                 id_comp = tweet.xpath('@id').get()
                 id = re.sub('M_', '', id_comp)  # Get comment ID
                 yield Request(url=u"https://weibo.cn/attitude/%s?&page=1" % id, meta={"Com_ID": id},
@@ -139,9 +141,9 @@ class Spider(RedisSpider):
                 ).get()
                 if url_next:
                     yield Request(url=self.host + url_next, callback=self.tweets_parse)
-            except:
-                print(time.asctime(time.localtime(time.time())), "tweet except")
-                pass
+        except:
+            print(time.asctime(time.localtime(time.time())), "tweet except")
+            pass
 
     def comments_parse(self, response):
         selector = Selector(response)
