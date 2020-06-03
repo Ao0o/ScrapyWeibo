@@ -4,6 +4,7 @@ import re
 import scrapy
 from scrapy.selector import Selector
 import datetime
+import time
 import requests
 from weibo_redis.items import InformationItem, TweetsItem, FansItem, URLItem
 from scrapy_redis.spiders import RedisSpider
@@ -41,8 +42,8 @@ class Spider(RedisSpider):
 
             if text:
                 num_tweets = re.findall(u'\u5fae\u535a\[(\d+)\]', text)
-                num_follows = re.findall(u'\u5173\u6ce8\[(\d+)\]', text)  # 关注数
-                num_fans = re.findall(u'\u7c89\u4e1d\[(\d+)\]', text)  # 粉丝数
+                num_follows = re.findall(u'\u5173\u6ce8\[(\d+)\]', text)
+                num_fans = re.findall(u'\u7c89\u4e1d\[(\d+)\]', text)
 
                 if num_tweets:
                     information_items["Num_Tweets"] = int(num_tweets[0])
@@ -56,7 +57,7 @@ class Spider(RedisSpider):
                 information_items["_id"] = response.meta["ID"]
                 url_detail_info = "https://weibo.cn/%s/info" % response.meta["ID"]
         except:
-            print("parse except")
+            print(time.asctime(time.localtime(time.time())), "parse except")
             pass
 
         # get cookies from scrapy response
@@ -75,10 +76,9 @@ class Spider(RedisSpider):
                 text1 = ";".join(selector.xpath('body/div[@class="c"]/text()'))
                 nickname = re.findall(u'\u6635\u79f0[:|\uff1a](.*?);', text1)
                 gender = re.findall(u'\u6027\u522b[:|\uff1a](.*?);', text1)
-                place = re.findall(u'\u5730\u533a[:|\uff1a](.*?);', text1)  # 地区（包括省份和城市）
-                birthday = re.findall(u'\u751f\u65e5[:|\uff1a](.*?);', text1)  # 生日
-                url = re.findall(u'\u4e92\u8054\u7f51[:|\uff1a](.*?);', text1)  # 首页链接
-                # marriage = re.findall(u'\u611f\u60c5\u72b6\u51b5[:|\uff1a](.*?);', text1)  # 婚姻状况
+                place = re.findall(u'\u5730\u533a[:|\uff1a](.*?);', text1)  # place（include province and city）
+                birthday = re.findall(u'\u751f\u65e5[:|\uff1a](.*?);', text1)  #
+                url = re.findall(u'\u4e92\u8054\u7f51[:|\uff1a](.*?);', text1)  #
 
                 if nickname:
                     information_items["NickName"] = nickname[0]
@@ -106,7 +106,7 @@ class Spider(RedisSpider):
 
                 yield information_items
         except:
-            print("detail except")
+            print(time.asctime(time.localtime(time.time())), "detail except")
             pass
 
     def tweets_parse(self, response):
@@ -118,12 +118,10 @@ class Spider(RedisSpider):
         for tweet in tweets:
             try:
                 id_comp = tweet.xpath('@id').get()
-                id = re.sub('M_', '', id_comp)  # 获取评论ID
+                id = re.sub('M_', '', id_comp)  # Get comment ID
                 yield Request(url=u"https://weibo.cn/attitude/%s?&page=1" % id, meta={"Com_ID": id},
-                              callback=self.attitude_parse)  # 爬取点赞列表
+                              callback=self.attitude_parse)  # Crawl attitude page
 
-                # content = tweet.xpath('div/span[@class="ctt"]/text()').getall()
-                # content2 = tweet.xpath('div/span[@class="cmt"]/text()').getall()
                 links = tweet.xpath('div/a/@href').getall()
                 for link in links:
                     if 'comment' in link:
@@ -132,15 +130,17 @@ class Spider(RedisSpider):
                         self.comment_url.append(comment_link)
 
                 for url in self.comment_url:
-                    yield Request(url=url, meta={"item": tweet_item}, callback=self.comments_parse)  # 爬取评论页
+                    yield Request(url=url, meta={"item": tweet_item},
+                                  callback=self.comments_parse)  # crawl comment page
 
                 url_next = selector.xpath(
-                    u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
+                    u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'
+                    # get next page url
                 ).get()
                 if url_next:
                     yield Request(url=self.host + url_next, callback=self.tweets_parse)
             except:
-                print("tweet except")
+                print(time.asctime(time.localtime(time.time())), "tweet except")
                 pass
 
     def comments_parse(self, response):
@@ -153,10 +153,11 @@ class Spider(RedisSpider):
                 elem = re.findall('/u/(\d+)', comment_id)
                 if elem:
                     ID = int(elem[0])
-                    yield Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
+                    yield Request(url="https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
 
             url_next = selector.xpath(
-                u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
+                u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'
+                # get next page url
             ).get()
 
             if url_next:
@@ -177,10 +178,10 @@ class Spider(RedisSpider):
             elem = re.findall('/u/(\d+)', comment_id)
             if elem:
                 ID = int(elem[0])
-                yield Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
+                yield Request(url="https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
 
         url_next = selector.xpath(
-            u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
+            u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # get next page url
         ).get()
 
         if url_next:

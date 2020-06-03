@@ -13,27 +13,27 @@ from scrapy import Field
 class InformationItem(scrapy.Item):
     # define the fields for your item here like:
     # name = scrapy.Field()
-    _id = Field()  # 用户ID
-    NickName = Field()  # 昵称
-    Gender = Field()  # 性别
-    Province = Field()  # 所在省
-    City = Field()  # 所在城市
-    Birthday = Field()  # 生日
-    Age = Field() #年龄
-    Num_Tweets = Field()  # 微博数
-    Num_Follows = Field()  # 关注数
-    Num_Fans = Field()  # 粉丝数
-    URL = Field()  # 首页链接
+    _id = Field()  # user_id
+    NickName = Field()
+    Gender = Field()
+    Province = Field()
+    City = Field()
+    Birthday = Field()
+    Age = Field()
+    Num_Tweets = Field()
+    Num_Follows = Field()
+    Num_Fans = Field()
+    URL = Field() #url link
 
 
 class TweetsItem(scrapy.Item):
-    """ 微博信息 """
-    _id = Field()  # 用户ID-微博ID
-    ID = Field()  # 用户ID
-    Like = Field() #点赞数
-    Content = Field()  # 微博内容
+    """ tweet information """
+    _id = Field()  # tweet ID
+    ID = Field()  # user ID
+    Like = Field() # num of attitude
+    Content = Field()  # content
 
-    PubTime = Field()  # 发表时间
+    PubTime = Field()  # published time
 
 
 class FansItem(scrapy.Item):
