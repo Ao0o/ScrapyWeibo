@@ -4,9 +4,12 @@ import re
 import scrapy
 from scrapy.selector import Selector
 import datetime
+import requests
 from weibo_redis.items import InformationItem, TweetsItem, FansItem, URLItem
 from scrapy_redis.spiders import RedisSpider
 from scrapy.http import Request
+# from scrapy.http.cookies import CookieJar
+from lxml import etree
 
 
 class Spider(RedisSpider):
@@ -16,7 +19,7 @@ class Spider(RedisSpider):
 
     start_urls = [
         # 2388955087,  # 首都网警
-
+        # 2185009762
         2014433131
     ]
     comment_url = []
@@ -25,9 +28,8 @@ class Spider(RedisSpider):
 
     def start_requests(self):
         for url in self.start_urls:
-            yield Request(url=u"https://weibo.cn/u/%s" % url,meta={"ID":url}, callback=self.parse)
-            yield Request(url=u"https://weibo.cn/u/%s?page=1" % url, meta={"ID": url}, callback=self.tweets_parse)
-
+            yield Request(url=u"https://weibo.cn/u/%s" % url, meta={"ID": url}, callback=self.parse)
+            # yield Request(url=u"https://weibo.cn/u/%s?page=1" % url, meta={"ID": url}, callback=self.tweets_parse)
 
     def parse(self, response):
 
@@ -50,46 +52,53 @@ class Spider(RedisSpider):
                 information_items["Num_Fans"] = int(num_fans[0])
 
             information_items["_id"] = response.meta["ID"]
-            # url_detail_info = "https://weibo.cn/%s/info" % response.meta["ID"]
-            #
-            yield scrapy.http.Request(url="https://weibo.cn/%s/info" % response.meta["ID"], meta={"item": information_items},
-                                      callback=self.detail_info_parse)  # 爬取个人详细信息
+            url_detail_info = "https://weibo.cn/%s/info" % response.meta["ID"]
 
-    def detail_info_parse(self, response):
-        information_items = response.meta['item']
-        selector = Selector(response)
-        text1 = ";".join(selector.xpath('body/div[@class="c"]/text()').getall())
-        nickname = re.findall(u'\u6635\u79f0[:|\uff1a](.*?);', text1)
-        gender = re.findall(u'\u6027\u522b[:|\uff1a](.*?);', text1)
-        place = re.findall(u'\u5730\u533a[:|\uff1a](.*?);', text1)  # 地区（包括省份和城市）
-        birthday = re.findall(u'\u751f\u65e5[:|\uff1a](.*?);', text1)  # 生日
-        url = re.findall(u'\u4e92\u8054\u7f51[:|\uff1a](.*?);', text1)  # 首页链接
-        # marriage = re.findall(u'\u611f\u60c5\u72b6\u51b5[:|\uff1a](.*?);', text1)  # 婚姻状况
+# change cookie2's type to dict
+            Cookie2 = str(response.request.headers.getlist('Cookie'))
+            cookie = {}
 
-        if nickname:
-            information_items["NickName"] = nickname[0]
+            for line in Cookie2.split(';'):
+                key, value = line.split('=', 1)
+                cookie[key] = value
 
-        if gender:
-            information_items["Gender"] = gender[0]
+            r = requests.get(url_detail_info, cookies=cookie)  # cookie's type need dict
 
-        if place:
-            place = place[0].split(" ")
-            information_items["Province"] = place[0]
-            if len(place) > 1:
-                information_items["City"] = place[1]
-        if birthday:
-            try:
-                birthday = datetime.datetime.strptime(birthday[0], "%Y-%m-%d")
-                today = datetime.date.today().year
-                age = today - birthday.year
-                information_items["Birthday"] = birthday - datetime.timedelta(hours=8)
-                information_items["Age"] = age
-            except Exception:
-                pass
-        if url:
-            information_items["URL"] = url[0]
+            if r.status_code == 200:
+                selector = etree.HTML(r.content)
+                text1 = ";".join(selector.xpath('body/div[@class="c"]/text()'))
+                nickname = re.findall(u'\u6635\u79f0[:|\uff1a](.*?);', text1)
+                gender = re.findall(u'\u6027\u522b[:|\uff1a](.*?);', text1)
+                place = re.findall(u'\u5730\u533a[:|\uff1a](.*?);', text1)  # 地区（包括省份和城市）
+                birthday = re.findall(u'\u751f\u65e5[:|\uff1a](.*?);', text1)  # 生日
+                url = re.findall(u'\u4e92\u8054\u7f51[:|\uff1a](.*?);', text1)  # 首页链接
+                # marriage = re.findall(u'\u611f\u60c5\u72b6\u51b5[:|\uff1a](.*?);', text1)  # 婚姻状况
 
-        yield information_items
+                if nickname:
+                    information_items["NickName"] = nickname[0]
+
+                if gender:
+                    information_items["Gender"] = gender[0]
+
+                if place:
+                    place = place[0].split(" ")
+                    information_items["Province"] = place[0]
+                    if len(place) > 1:
+                        information_items["City"] = place[1]
+                if birthday:
+                    try:
+                        birthday = datetime.datetime.strptime(birthday[0], "%Y-%m-%d")
+                        today = datetime.date.today().year
+                        age = today - birthday.year
+                        information_items["Birthday"] = birthday - datetime.timedelta(hours=8)
+                        information_items["Age"] = age
+                    except Exception:
+                        pass
+                if url:
+                    information_items["URL"] = url[0]
+
+                yield information_items
+
 
     def tweets_parse(self, response):
         selector = Selector(response)
@@ -99,9 +108,9 @@ class Spider(RedisSpider):
 
         for tweet in tweets:
             id_comp = tweet.xpath('@id').get()
-            id = re.sub('M_', '', id_comp) #获取评论ID
+            id = re.sub('M_', '', id_comp)  # 获取评论ID
             yield scrapy.http.Request(url=u"https://weibo.cn/attitude/%s?&page=1" % id, meta={"Com_ID": id},
-                                      callback=self.parse) #爬取点赞列表
+                                      callback=self.attitude_parse)  # 爬取点赞列表
 
             # content = tweet.xpath('div/span[@class="ctt"]/text()').getall()
             # content2 = tweet.xpath('div/span[@class="cmt"]/text()').getall()
@@ -113,7 +122,7 @@ class Spider(RedisSpider):
                     self.comment_url.append(comment_link)
 
             for url in self.comment_url:
-                yield Request(url=url, meta={"item":tweet_item},callback=self.comments_parse)  # 爬取评论页
+                yield Request(url=url, meta={"item": tweet_item}, callback=self.comments_parse)  # 爬取评论页
 
             url_next = selector.xpath(
                 u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
@@ -152,17 +161,9 @@ class Spider(RedisSpider):
                 ID = int(elem[0])
                 yield scrapy.http.Request(url=u"https://weibo.cn/u/%s" % ID, meta={"ID": ID}, callback=self.parse)
 
-
         url_next = selector.xpath(
             u'body//div[@class="pa" and @id="pagelist"]/form/div/a[text()="\u4e0b\u9875"]/@href'  # 下一页
         ).get()
 
         if url_next:
             yield scrapy.http.Request(url=self.host + url_next, callback=self.attitude_parse)
-
-
-
-
-
-
-
