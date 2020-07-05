@@ -6,15 +6,39 @@
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
 from scrapy import signals
-from weibo_redis.cookies import cookies
 import random
+import pymongo
+from settings import MONGO_URI
+from user_agents import agents
 
-class CookiesMiddleware(object):
-    """ 换Cookie """
+
+class UserAgentMiddleware(object):
+    """ 换User-Agent """
 
     def process_request(self, request, spider):
-        cookie = random.choice(cookies)
-        request.cookies = cookie
+        agent = random.choice(agents)
+        request.headers["User-Agent"] = agent
+        # print(u'当前User-Agent:', request.headers['User-Agent'])
+
+class CookieMiddleware(object):
+    """
+    每次请求都随机从账号池中选择一个账号去访问
+    """
+
+    def __init__(self):
+        client = pymongo.MongoClient(MONGO_URI)
+        self.account_collection = client['weibo']['account']
+
+    def process_request(self, request, spider):
+        all_count = self.account_collection.find({'status': 'success'}).count()
+        if all_count == 0:
+            raise Exception('Current account pool is empty!! The spider will stop!!')
+        random_index = random.randint(0, all_count - 1)
+        random_account = self.account_collection.find({'status': 'success'})[random_index]
+        request.headers.setdefault('Cookie', random_account['cookie'])
+        request.meta['account'] = random_account
+        # print(random_account['_id'])
+
 
 
 
@@ -111,3 +135,20 @@ class WeiboRedisDownloaderMiddleware:
 
     def spider_opened(self, spider):
         spider.logger.info('Spider opened: %s' % spider.name)
+
+
+
+# 添加IP代理
+class IPProxyMiddleware(object):
+
+    def fetch_proxy(self):
+        # You need to rewrite this function if you want to add proxy pool
+        # the function should return a ip in the format of "ip:port" like "12.34.1.4:9090"
+        return None
+
+    def process_request(self, request, spider):
+        proxy_data = self.fetch_proxy()
+        if proxy_data:
+            current_proxy = f'http://{proxy_data}'
+            spider.logger.debug(f"current proxy:{current_proxy}")
+            request.meta['proxy'] = current_proxy

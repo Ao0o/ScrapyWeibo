@@ -1,11 +1,5 @@
 # -*- coding: utf-8 -*-
 
-
-
-
-
-# -*- coding: utf-8 -*-
-
 # Define your item pipelines here
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
@@ -19,12 +13,14 @@
 
 
 import pymongo
-from weibo_redis.items import InformationItem, TweetsItem
+from weibo_redis.items import InformationItem, UserItem, TweetItem, RelationshipItem, CommentItem
 
 
 class WeiboRedisPipeline:
-    Informationdb = 'Information'
+    UserItemdb = 'User'
     Tweetdb = 'Tweets'
+    Relationshipdb = 'Relationship'
+    CommentItemdb = 'Comment'
 
 
     def __init__(self, mongo_uri, mongo_db):
@@ -48,15 +44,27 @@ class WeiboRedisPipeline:
 
     def process_item(self, item, spider):
 
-        if isinstance(item, InformationItem):
+        if isinstance(item, UserItem):
             try:
-                self.db[self.Informationdb].insert_one(dict(item))
+                self.db[self.UserItemdb].insert_one(dict(item))
             except Exception:
                 pass
-        elif isinstance(item, TweetsItem):
+        elif isinstance(item, TweetItem):
             try:
                 self.db[self.Tweetdb].insert_one(dict(item))
             except Exception:
+                pass
+        elif isinstance(item, RelationshipItem):
+            try:
+                self.db[self.Relationshipdb].insert_one(dict(item))
+            except Exception as e:
+                self.logger.error(e)
+                pass
+        elif isinstance(item, CommentItem):
+            try:
+                self.db[self.CommentItemdb].insert_one(dict(item))
+            except Exception as e:
+                self.logger.error(e)
                 pass
 
         return item
