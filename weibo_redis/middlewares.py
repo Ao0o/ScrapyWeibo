@@ -8,8 +8,8 @@
 from scrapy import signals
 import random
 import pymongo
-from settings import MONGO_URI
-from user_agents import agents
+from weibo_redis.settings import MONGO_URI
+from weibo_redis.user_agents import agents
 
 
 class UserAgentMiddleware(object):

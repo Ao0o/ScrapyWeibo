@@ -177,10 +177,10 @@ class Spider(RedisSpider):
         request_meta['item'] = user_item
         yield Request(self.base_url + '/u/{}'.format(user_item['_id']),
                       callback=self.parse_further_information,
-                      meta=request_meta, dont_filter=True, priority=2)
+                      meta=request_meta, dont_filter=False, priority=1)
         yield Request(self.base_url + '/{}'.format(user_item['_id'] + '/follow?page=1'),
                       callback=self.fellow_parse,
-                      meta=request_meta, dont_filter=True, priority=2)
+                      meta=request_meta, dont_filter=False, priority=3)
 
     def parse_further_information(self, response):
         text = response.text
@@ -317,7 +317,7 @@ class Spider(RedisSpider):
                 all_page = all_page if all_page <= 50 else 50
                 for page_num in range(2, all_page + 1):
                     page_url = response.url.replace('page=1', 'page={}'.format(page_num))
-                    yield Request(page_url, self.comments_parse, dont_filter=True, meta=response.meta)
+                    yield Request(page_url, self.comments_parse, dont_filter=False, meta=response.meta)
         try:
             tree_node = etree.HTML(response.body)
             comment_nodes = tree_node.xpath('//div[@class="c" and contains(@id,"C_")]')
@@ -398,7 +398,7 @@ class Spider(RedisSpider):
                     all_page = int(all_page)
                     for page_num in range(2, all_page + 1):
                         page_url = response.url.replace('page=1', 'page={}'.format(page_num))
-                        yield Request(page_url, self.fellow_parse, dont_filter=True, meta=response.meta)
+                        yield Request(page_url, self.fellow_parse, dont_filter=True, meta=response.meta, priority=4)
         except Exception as e:
             self.logger.error(e)
             print("fellow_parse1 except")
